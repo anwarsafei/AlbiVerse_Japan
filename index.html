@@ -85,6 +85,8 @@ input{font-family:inherit;user-select:text;-webkit-user-select:text}
 .parent-card label{font-size:2.8vmin;font-weight:700;color:#475569}
 .name-input{font-size:5vmin;font-weight:700;padding:1.2vmin 2vmin;border-radius:2vmin;border:.5vmin solid #cbd5e1;width:100%;color:var(--ink)}
 .name-input:focus{outline:none;border-color:var(--orange)}
+.school-input{font-size:4.2vmin;font-weight:700;padding:1vmin 2vmin;border-radius:2vmin;border:.5vmin solid #cbd5e1;width:100%;color:var(--ink)}
+.school-input:focus{outline:none;border-color:var(--orange)}
 .chips{display:flex;flex-wrap:wrap;gap:1.2vmin}
 .chip{font-size:3vmin;font-weight:700;padding:.6vmin 2.4vmin;border-radius:999px;background:#f1f5f9;color:var(--ink);border:.4vmin solid #e2e8f0}
 .chip.on{background:#fff7e6;border-color:var(--orange)}
@@ -176,6 +178,8 @@ input{font-family:inherit;user-select:text;-webkit-user-select:text}
       <label for="nameInput">Nama anak (cek & perbaiki ejaannya)</label>
       <input class="name-input" id="nameInput" type="text" autocomplete="off" autocapitalize="words" placeholder="Nama anak…" maxlength="40">
       <div class="chips" id="alts"></div>
+      <label for="schoolInput">Sekolah (boleh dikosongkan)</label>
+      <input class="school-input" id="schoolInput" type="text" autocomplete="off" autocapitalize="words" placeholder="Sekolah…" maxlength="60">
       <label>Usia (boleh dilewati)</label>
       <div class="chips" id="ages"></div>
       <input class="age-input" id="ageInput" type="number" inputmode="numeric" min="1" max="99" placeholder="Usia lain (angka) th…">
@@ -238,6 +242,10 @@ const CHARS = [
   ['🐘','Gajah'],['🐧','Penguin'],['🦋','Kupu-kupu'],['🐢','Kura-kura']
 ];
 const AGES = ['5 th','6 th','7 th','8 th','9 th','10 th'];
+const NAMA_MAX = 40;         // batas karakter nama anak
+const SEKOLAH_MAX = 60;      // batas karakter nama sekolah
+// Kata jenjang sekolah: dipakai untuk memisahkan nama anak dari nama sekolah
+const JENJANG = new Set(['tk', 'kb', 'paud', 'ra', 'mi', 'sd', 'smp', 'mts', 'sma', 'ma', 'smk']);
 const IDLE_MS = 90000;       // kembali ke layar utama jika tidak disentuh 90 detik
 const PULL_MS = 20000;       // ambil data terbaru dari Sheet tiap 20 detik
 const FLUSH_MS = 15000;      // coba kirim antrean tiap 15 detik
@@ -364,6 +372,7 @@ $('startBtn').onclick = () => {
 /* ---------- alur: sebut nama ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false;
+let altList = [];   // pilihan alternatif hasil suara (nama + sekolah)
 
 $('ages').innerHTML = AGES.map(a => `<button class="chip" data-age="${a}">${a}</button>`).join('');
 $('ages').onclick = ev => {
@@ -383,7 +392,8 @@ function openNameScreen() {
   $('ageInput').value = '';
   [...$('ages').children].forEach(c => c.classList.remove('on'));
   $('mascot').textContent = state.char.e;
-  $('nameInput').value = ''; $('heard').textContent = ''; $('alts').innerHTML = '';
+  $('nameInput').value = ''; $('schoolInput').value = ''; $('heard').textContent = ''; $('alts').innerHTML = '';
+  altList = [];
   updateSave();
   if (SR) {
     $('micBtn').style.display = ''; $('srHint').textContent = '';
@@ -400,13 +410,30 @@ function openNameScreen() {
 }
 function setStatus(t) { $('status').textContent = t; }
 
-function cleanName(raw) {
+/** Rapikan nama sekolah: kata jenjang huruf besar (SD, TK), sisanya Title Case. */
+function formatSchool(raw) {
+  const s = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!s) return '';
+  return s.split(' ').map(w => JENJANG.has(w.toLowerCase()) ? w.toUpperCase() : titleCase(w))
+    .join(' ').slice(0, SEKOLAH_MAX);
+}
+
+/** Pisahkan ucapan/ketikan jadi { nama, sekolah } lewat kata jenjang (TK, SD, dst). */
+function splitNameSchool(raw) {
   let s = String(raw || '').toLowerCase().trim();
-  s = s.replace(/[.,!?]/g, ' ');
+  s = s.replace(/[.,!?\-–]/g, ' ');
   s = s.replace(/^(halo|hai|hi)\s+/, '');
-  s = s.replace(/^(nama\s*(aku|saya|ku)|namaku|aku|saya)\s+(adalah\s+|itu\s+)?/, '');
-  s = s.replace(/\s+/g, ' ').trim().slice(0, 40);
-  return titleCase(s);
+  s = s.replace(/^(namaku|namanya|nama\s*(aku|saya|ku))\s+(adalah\s+|itu\s+)?/, '');
+  s = s.replace(/^(aku|saya)\s+(adalah\s+|itu\s+)?/, '');
+  const words = s.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const idx = words.findIndex(w => JENJANG.has(w));
+  const namaW = idx > 0 ? words.slice(0, idx) : words;     // tanpa jenjang: semua dianggap nama
+  const sekolahW = idx > 0 ? words.slice(idx) : [];
+  while (namaW.length > 1 && ['dari', 'sekolah', 'di'].includes(namaW[namaW.length - 1])) namaW.pop();
+  return {
+    nama: titleCase(namaW.join(' ')).slice(0, NAMA_MAX),
+    sekolah: formatSchool(sekolahW.join(' '))
+  };
 }
 
 function startListen() {
@@ -418,15 +445,19 @@ function startListen() {
   rec.onstart = () => { listening = true; $('micBtn').classList.add('listening'); setStatus('Aku mendengarkan… 👂'); };
   rec.onresult = e => {
     const res = e.results[e.results.length - 1];
-    const best = cleanName(res[0].transcript);
-    $('heard').textContent = best; $('nameInput').value = best; updateSave();
+    const best = splitNameSchool(res[0].transcript);
+    $('heard').textContent = best.nama;
+    $('nameInput').value = best.nama; $('schoolInput').value = best.sekolah; updateSave();
     if (res.isFinal) {
-      const alts = [];
+      const bestKey = best.nama + '|' + best.sekolah;
+      altList = [];
       for (let i = 1; i < res.length; i++) {
-        const a = cleanName(res[i].transcript);
-        if (a && a !== best && !alts.includes(a)) alts.push(a);
+        const a = splitNameSchool(res[i].transcript);
+        const key = a.nama + '|' + a.sekolah;
+        if (a.nama && key !== bestKey && !altList.some(x => x.key === key)) altList.push({ ...a, key });
       }
-      $('alts').innerHTML = alts.map(a => `<button class="chip alt-chip">${a}</button>`).join('');
+      $('alts').innerHTML = altList.map((a, i) =>
+        `<button class="chip alt-chip" data-alt="${i}">${a.nama}${a.sekolah ? ' · ' + a.sekolah : ''}</button>`).join('');
     }
   };
   rec.onerror = e => {
@@ -448,17 +479,20 @@ $('micBtn').onclick = startListen;
 
 $('alts').onclick = ev => {
   const b = ev.target.closest('.chip'); if (!b) return;
-  $('nameInput').value = b.textContent; $('heard').textContent = b.textContent; updateSave();
+  const a = altList[+b.dataset.alt]; if (!a) return;
+  $('nameInput').value = a.nama; $('schoolInput').value = a.sekolah;
+  $('heard').textContent = a.nama; updateSave();
 };
 $('nameInput').oninput = () => { $('heard').textContent = $('nameInput').value; updateSave(); };
 function updateSave() { $('saveBtn').disabled = !$('nameInput').value.trim(); }
 
 $('saveBtn').onclick = () => {
-  const nama = titleCase($('nameInput').value.trim().replace(/\s+/g, ' '));
+  const nama = titleCase($('nameInput').value.trim().replace(/\s+/g, ' ')).slice(0, NAMA_MAX);
   if (!nama) return;
+  const sekolah = formatSchool($('schoolInput').value);   // boleh kosong
   stopListen();
   const entry = {
-    id: uid(), waktu: new Date().toISOString(), nama,
+    id: uid(), waktu: new Date().toISOString(), nama, sekolah,
     karakter: `${state.char.e} ${state.char.l}`, usia: state.age, perangkat: deviceId
   };
   entries.push(entry); persistEntries();
@@ -563,7 +597,7 @@ function openAdmin() {
 function renderRecent() {
   const last = entries.slice(-12).reverse();
   $('recent').innerHTML = last.length ? last.map(e =>
-    `<li><span>${emojiOf(e.karakter)} ${e.nama} <span class="muted">${new Date(e.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
+    `<li><span>${emojiOf(e.karakter)} ${e.nama}${e.sekolah ? ' · ' + e.sekolah : ''} <span class="muted">${new Date(e.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></span>
      <button class="sbtn red" data-del="${e.id}">🗑</button></li>`).join('') : '<li class="muted">Belum ada peserta.</li>';
 }
 $('recent').onclick = ev => {
