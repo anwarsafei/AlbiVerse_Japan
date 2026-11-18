@@ -88,6 +88,8 @@ input{font-family:inherit;user-select:text;-webkit-user-select:text}
 .chips{display:flex;flex-wrap:wrap;gap:1.2vmin}
 .chip{font-size:3vmin;font-weight:700;padding:.6vmin 2.4vmin;border-radius:999px;background:#f1f5f9;color:var(--ink);border:.4vmin solid #e2e8f0}
 .chip.on{background:#fff7e6;border-color:var(--orange)}
+.age-input{font-size:3vmin;font-weight:700;padding:.6vmin 1.6vmin;border-radius:999px;border:.4vmin solid #e2e8f0;width:100%;margin-top:1.2vmin;color:var(--ink)}
+.age-input:focus{outline:none;border-color:var(--orange)}
 .alt-chip{background:#eef6ff;border-color:#bfdbfe}
 .save-btn{font-size:4.6vmin;font-weight:800;padding:1.4vmin;border-radius:2.5vmin;background:var(--green);color:#fff;box-shadow:0 .9vmin 0 var(--green-d);margin-top:1vmin}
 .save-btn:disabled{background:#cbd5e1;box-shadow:0 .9vmin 0 #94a3b8}
@@ -176,6 +178,7 @@ input{font-family:inherit;user-select:text;-webkit-user-select:text}
       <div class="chips" id="alts"></div>
       <label>Usia (boleh dilewati)</label>
       <div class="chips" id="ages"></div>
+      <input class="age-input" id="ageInput" type="number" inputmode="numeric" min="1" max="99" placeholder="Usia lain (angka) th…">
       <button class="save-btn" id="saveBtn" disabled>✓ Simpan</button>
       <p class="hint" id="srHint"></p>
     </div>
@@ -234,7 +237,7 @@ const CHARS = [
   ['🐼','Panda'],['🐸','Katak'],['🐵','Monyet'],['🦒','Jerapah'],
   ['🐘','Gajah'],['🐧','Penguin'],['🦋','Kupu-kupu'],['🐢','Kura-kura']
 ];
-const AGES = ['3 th','4 th','5 th','6 th','7 th'];
+const AGES = ['5 th','6 th','7 th','8 th','9 th','10 th'];
 const IDLE_MS = 90000;       // kembali ke layar utama jika tidak disentuh 90 detik
 const PULL_MS = 20000;       // ambil data terbaru dari Sheet tiap 20 detik
 const FLUSH_MS = 15000;      // coba kirim antrean tiap 15 detik
@@ -366,11 +369,18 @@ $('ages').innerHTML = AGES.map(a => `<button class="chip" data-age="${a}">${a}</
 $('ages').onclick = ev => {
   const b = ev.target.closest('.chip'); if (!b) return;
   state.age = state.age === b.dataset.age ? '' : b.dataset.age;
+  $('ageInput').value = '';
   [...$('ages').children].forEach(c => c.classList.toggle('on', c.dataset.age === state.age));
+};
+$('ageInput').oninput = ev => {
+  const n = parseInt(ev.target.value, 10);
+  state.age = (n >= 1 && n <= 99) ? `${n} th` : '';
+  [...$('ages').children].forEach(c => c.classList.remove('on'));
 };
 
 function openNameScreen() {
   state.age = '';
+  $('ageInput').value = '';
   [...$('ages').children].forEach(c => c.classList.remove('on'));
   $('mascot').textContent = state.char.e;
   $('nameInput').value = ''; $('heard').textContent = ''; $('alts').innerHTML = '';

@@ -9,7 +9,7 @@
  * 3. Salin URL Web App (…/exec) ke halaman web (Panel Panitia).
  */
 
-const TOKEN = 'ganti-dengan-token-rahasia';
+const TOKEN = 'albiverse-japan-2026';
 const SHEET_NAME = 'Absensi';
 const TZ = 'Asia/Jakarta';
 const HEADERS = ['ID', 'Waktu', 'Nama Anak', 'Karakter', 'Usia', 'Perangkat'];
